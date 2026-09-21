@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Sales performance dashboard: revenue trends, target vs. actual and tiered incentive calculator. Runs entirely in your browser.">
+<title>Sales Performance Ledger</title>
+<link rel="icon" type="image/svg+xml" href="./favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="shell">
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="eyebrow">INTERNAL · REVENUE OPS</div>
+      <h1>Sales <em>Ledger</em></h1>
+    </div>
+
+    <div class="panel" style="border-top:1px solid var(--line); padding-top:20px;">
+      <h3>1 &nbsp;Actual sales data</h3>
+      <div class="drop" id="dropZone">
+        <strong>Drop workbook here</strong>
+        <p>or click to browse — .xlsx / .xls / .csv</p>
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+      <div class="file-status" id="fileStatus"></div>
+      <div class="sheet-picker" id="sheetPicker" style="display:none;">
+        <label class="field-label">Sheet</label>
+        <select id="sheetSelect"></select>
+      </div>
+    </div>
+
+    <div class="panel" id="targetUploadPanel">
+      <h3>2 &nbsp;Sales targets <span style="color:var(--muted); font-weight:400;">(optional)</span></h3>
+      <p class="lock-note">Load actual sales data first — target periods are matched against it.</p>
+      <div class="drop" id="dropZoneTarget">
+        <strong>Drop target list here</strong>
+        <p>or click to browse — .xlsx / .xls / .csv</p>
+      </div>
+      <input type="file" id="fileInputTarget" accept=".xlsx,.xls,.csv">
+      <div class="file-status" id="fileStatusTarget"></div>
+      <div class="sheet-picker" id="sheetPickerTarget" style="display:none;">
+        <label class="field-label">Sheet</label>
+        <select id="sheetSelectTarget"></select>
+      </div>
+      <p style="font-size:11px; color:var(--muted); margin:10px 0 0;">
+        Columns: Sales Person, Target Value in USD, Target Value in KSH, Sales Category, Target Frequency (Monthly/Quarterly/Yearly). A target applies to every period of that frequency unless you add an optional Target Period column.
+      </p>
+      <span class="reset-link" id="downloadTemplate" style="color:var(--teal);">Download template (CSV)</span>
+    </div>
+
+    <div class="panel" id="filtersPanel" style="display:none;">
+      <h3>3 &nbsp;Filters</h3>
+      <label class="field-label">From month</label>
+      <div class="month-range">
+        <select id="monthFrom"></select>
+      </div>
+      <label class="field-label">To month</label>
+      <div class="month-range">
+        <select id="monthTo"></select>
+      </div>
+
+      <label class="field-label">Sales category</label>
+      <div class="chip-list" id="categoryChips"></div>
+
+      <span class="reset-link" id="resetFilters">Reset all filters</span>
+    </div>
+
+    <div class="panel" id="fxPanel" style="display:none;">
+      <h3>Currency rule</h3>
+      <p style="font-size:12px; color:var(--muted); margin:0;">
+        KES rows use Item Total as-is. USD rows are converted at
+        <span class="mono" style="color:var(--ink);">×<span class="usd-rate">130</span></span> into KES.
+        All figures below are shown in normalized KES.
+      </p>
+    </div>
+
+    <div class="panel" id="mappingPanel" style="display:none;">
+      <h3>Incentive category mapping</h3>
+      <p style="font-size:11.5px; color:var(--muted); margin:0 0 10px;">
+        Map each sales category found in your file to an incentive group. Guessed automatically — override any row.
+      </p>
+      <div id="mappingList"></div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main>
+    <div class="panel">
+      <div class="top-row">
+        <div>
+          <div class="eyebrow" id="periodLabel">No data loaded</div>
+          <h2>Performance overview</h2>
+        </div>
+        <div class="fx-note">Amounts normalized to KES · USD × <span class="usd-rate">130</span></div>
+      </div>
+    </div>
+
+    <div id="emptyState" class="empty-state">
+      <h2>Upload a workbook to begin</h2>
+      <p>Bring in your raw export with Invoice Date, CF.Currency, Item Total, Item.CF.Sales Category and Sales person columns — the ledger will handle month grouping and currency normalization automatically.</p>
+    </div>
+
+    <div id="dashboardContent" style="display:none;">
+      <div class="person-filter-row">
+        <span class="field-label">Sales person</span>
+        <div class="chip-list" id="personChipsMain"></div>
+      </div>
+
+      <div class="warn-banner" id="warnBanner"></div>
+
+      <div class="kpi-strip">
+        <div class="kpi">
+          <div class="label">Total revenue (KES, normalized)</div>
+          <div class="value" id="kpiRevenue">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Line items</div>
+          <div class="value" id="kpiCount">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Avg. item value</div>
+          <div class="value" id="kpiAvg">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Top performer (period)</div>
+          <div class="value" id="kpiTop" style="font-size:15px;">—</div>
+          <div class="sub" id="kpiTopValue"></div>
+        </div>
+      </div>
+
+      <div class="chart-row">
+        <div class="chart-box">
+          <h3>Monthly revenue trend</h3>
+          <canvas id="trendChart"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3>Revenue by sales category</h3>
+          <canvas id="categoryChart"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="actions-row">
+          <h3 style="font-size:16px;">Target vs. actual — by sales person</h3>
+          <div style="display:flex; gap:8px;">
+            <button class="btn ghost" id="exportCsv">Export table (CSV)</button>
+          </div>
+        </div>
+        <p style="font-size:12.5px; color:var(--muted); margin:2px 0 16px;">
+          Enter a monthly KES target per sales person. Actual is pulled live from Item Total (currency-normalized). Targets are held for this session — export to keep a copy.
+        </p>
+
+        <div class="tva-controls">
+          <div>
+            <label class="field-label">Evaluate month</label>
+            <select id="tvaMonth"></select>
+          </div>
+          <div>
+            <label class="field-label">Sales category</label>
+            <select id="tvaCategory"><option value="__all__">All categories</option></select>
+          </div>
+          <div>
+            <label class="field-label">Sort by</label>
+            <select id="tvaSort">
+              <option value="actual_desc">Actual (high → low)</option>
+              <option value="achv_desc">Achievement % (high → low)</option>
+              <option value="achv_asc">Achievement % (low → high)</option>
+              <option value="name">Sales person (A → Z)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table id="tvaTable">
+            <thead>
+              <tr>
+                <th>Sales person</th>
+                <th style="text-align:right;">Target (KES)</th>
+                <th style="text-align:right;">Actual (KES)</th>
+                <th style="text-align:right;">Variance</th>
+                <th style="text-align:right;">Achievement</th>
+                <th>Progress</th>
+              </tr>
+            </thead>
+            <tbody id="tvaBody"></tbody>
+            <tfoot id="tvaFoot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="chart-row">
+        <div class="chart-box" style="border-right:none;">
+          <h3>Target vs actual — selected month</h3>
+          <canvas id="tvaChart"></canvas>
+        </div>
+      </div>
+
+      <div class="panel" style="border-bottom:none;">
+        <div class="actions-row">
+          <h3 style="font-size:16px;">Incentive calculator</h3>
+          <div class="export-group">
+            <select id="incentiveExportFormat">
+              <option value="csv">CSV</option>
+              <option value="xlsx">Excel (.xlsx)</option>
+              <option value="pdf">PDF</option>
+            </select>
+            <button class="btn ghost" id="exportIncentiveBtn">Download</button>
+          </div>
+        </div>
+        <p style="font-size:12.5px; color:var(--muted); margin:2px 0 12px;">
+          Each category group runs on its own evaluation period and tier structure. Set a target per sales person for the selected period — incentive is calculated on the portion of sales that falls in each tier.
+        </p>
+
+        <div class="incentive-controls">
+          <div>
+            <label class="field-label">Category group</label>
+            <select id="incentiveGroup"></select>
+          </div>
+          <div>
+            <label class="field-label">Period</label>
+            <select id="incentivePeriod"></select>
+          </div>
+        </div>
+
+        <div class="incentive-rules" id="incentiveRules"></div>
+
+        <div class="table-scroll">
+          <table id="incentiveTable">
+            <thead>
+              <tr>
+                <th>Sales person</th>
+                <th style="text-align:right;">Target</th>
+                <th style="text-align:right;">Actual sales</th>
+                <th style="text-align:right;">Achievement %</th>
+                <th style="text-align:right;">Incentive (KES)</th>
+              </tr>
+            </thead>
+            <tbody id="incentiveBody"></tbody>
+            <tfoot id="incentiveFoot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="border-bottom:none;">
+        <div class="actions-row">
+          <h3 style="font-size:16px;">Category insights</h3>
+          <button class="btn" id="downloadInsightsPdf">Download PDF</button>
+        </div>
+        <p style="font-size:12.5px; color:var(--muted); margin:2px 0 16px;">
+          Cross-category read on revenue mix and incentive exposure, using each group's most recent period and the current sales-person / month-range filters.
+        </p>
+        <div class="insight-grid" id="insightGrid"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="printArea"></div>
+
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

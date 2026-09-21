@@ -1,0 +1,20 @@
+# dependencies & build output
+node_modules/
+dist/
+
+# environment / editor / OS
+.env
+.env.*
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+*.log
+
+# ---- PRIVACY GUARD: never commit real sales data ----
+# Only the fake files in sample-data/ are allowed in the repository.
+*.xlsx
+*.xls
+*.csv
+!sample-data/*.xlsx
+!sample-data/*.csv

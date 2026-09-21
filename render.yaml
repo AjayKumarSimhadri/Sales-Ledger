@@ -1,0 +1,9 @@
+# Optional: one-click deploy of the Node server on https://render.com  (New > Blueprint)
+services:
+  - type: web
+    name: sales-performance-ledger
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
